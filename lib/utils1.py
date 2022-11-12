@@ -291,7 +291,7 @@ def calculate_laplacian_matrix(adj_mat, mat_type):
             return hat_rw_normd_lap_mat
 
 
-def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_days, num_of_weeks, DEVICE, batch_size, shuffle=True):
+def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_days, num_of_weeks, DEVICE, batch_size, num_features=1, shuffle=True):
     '''
     这个是为PEMS的数据准备的函数
     将x,y都处理成归一化到[-1,1]之前的数据;
@@ -324,19 +324,19 @@ def load_graphdata_channel1(graph_signal_matrix_filename, num_of_hours, num_of_d
 
     file_data = np.load(filename + '.npz')
     train_x = file_data['train_x']  # (10181, 307, 3, 12)
-    train_x = train_x[:, :, 0:1, :]
+    train_x = train_x[:, :, 0:num_features, :]
     train_target = file_data['train_target']  # (10181, 307, 12)
 
     val_x = file_data['val_x']
-    val_x = val_x[:, :, 0:1, :]
+    val_x = val_x[:, :, 0:num_features, :]
     val_target = file_data['val_target']
 
     test_x = file_data['test_x']
-    test_x = test_x[:, :, 0:1, :]
+    test_x = test_x[:, :, 0:num_features, :]
     test_target = file_data['test_target']
 
-    mean = file_data['mean'][:, :, 0:1, :]  # (1, 1, 3, 1)
-    std = file_data['std'][:, :, 0:1, :]  # (1, 1, 3, 1)
+    mean = file_data['mean'][:, :, 0:num_features, :]  # (1, 1, 3, 1)
+    std = file_data['std'][:, :, 0:num_features, :]  # (1, 1, 3, 1)
 
     # ------- train_loader -------
     train_x_tensor = torch.from_numpy(train_x).type(torch.FloatTensor).to(DEVICE)  # (B, N, F, T)
@@ -458,7 +458,7 @@ def evaluate_on_test_mstgcn(net, test_loader, test_target_tensor, sw, epoch, _me
                 sw.add_scalar('MAPE_%s_points' % (i), mape, epoch)
 
 
-def predict_and_save_results_mstgcn(net, data_loader, data_target_tensor, global_step, _mean, _std, params_path, type):
+def predict_and_save_results_mstgcn(net, data_loader, data_target_tensor, global_step, _mean, _std, params_path, type, num_features=1):
     '''
 
     :param net: nn.Module
@@ -485,8 +485,7 @@ def predict_and_save_results_mstgcn(net, data_loader, data_target_tensor, global
         for batch_index, batch_data in enumerate(data_loader):
 
             encoder_inputs, labels = batch_data
-
-            input.append(encoder_inputs[:, :, 0:1].cpu().numpy())  # (batch, T', 1)
+            input.append(encoder_inputs[:, :, 0:num_features].cpu().numpy())  # (batch, T', 1)
 
             outputs = net(encoder_inputs)
 

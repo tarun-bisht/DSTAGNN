@@ -51,6 +51,7 @@ else:
 num_of_vertices = int(data_config['num_of_vertices'])
 points_per_hour = int(data_config['points_per_hour'])
 num_for_predict = int(data_config['num_for_predict'])
+num_features = int(data_config['num_features'])
 len_input = int(data_config['len_input'])
 dataset_name = data_config['dataset_name']
 
@@ -91,7 +92,7 @@ print('params_path:', params_path)
 
 _, train_loader, train_target_tensor, _, val_loader, val_target_tensor, _, test_loader, test_target_tensor, _mean, _std = load_graphdata_channel1(
     graph_signal_matrix_filename, num_of_hours,
-    num_of_days, num_of_weeks, DEVICE, batch_size)
+    num_of_days, num_of_weeks, DEVICE, batch_size, num_features=num_features)
 
 if dataset_name == 'PEMS04' or 'PEMS08' or 'PEMS07' or 'PEMS03':
     adj_mx = get_adjacency_matrix2(adj_filename, num_of_vertices, id_filename=id_filename)
@@ -229,7 +230,7 @@ def predict_main(global_step, data_loader, data_target_tensor, _mean, _std, type
 
     net.load_state_dict(torch.load(params_filename))
 
-    predict_and_save_results_mstgcn(net, data_loader, data_target_tensor, global_step, _mean, _std, params_path, type)
+    predict_and_save_results_mstgcn(net, data_loader, data_target_tensor, global_step, _mean, _std, params_path, type, num_features)
 
 
 if __name__ == "__main__":
