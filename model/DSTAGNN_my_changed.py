@@ -37,7 +37,7 @@ class ScaledDotProductAttention(nn.Module):
         V: [batch_size, n_heads, len_v(=len_k), d_v]
         attn_mask: [batch_size, n_heads, seq_len, seq_len]
         '''
-        scores = torch.matmul(Q, K.transpose(-1, -2)) / np.sqrt(self.d_k) + res_att  # scores : [batch_size, n_heads, len_q, len_k]
+        scores = torch.matmul(Q, K.transpose(-1, -2)) / np.sqrt(self.d_k) + res_att
         if attn_mask is not None:
             scores.masked_fill_(attn_mask, -1e9)  # Fills elements of self tensor with value where mask is True.
         attn = F.softmax(scores, dim=3)
@@ -65,8 +65,8 @@ class SMultiHeadAttention(nn.Module):
         '''
         residual, batch_size = input_Q, input_Q.size(0)
         # (B, S, D) -proj-> (B, S, D_new) -split-> (B, S, H, W) -trans-> (B, H, S, W)
-        Q = self.W_Q(input_Q).view(batch_size, -1, self.n_heads, self.d_k).transpose(1, 2)  # Q: [batch_size, n_heads, len_q, d_k]
-        K = self.W_K(input_K).view(batch_size, -1, self.n_heads, self.d_k).transpose(1, 2)  # K: [batch_size, n_heads, len_k, d_k]
+        Q = self.W_Q(input_Q) # Q: [batch_size, n_heads, len_q, d_k]
+        K = self.W_K(input_K) # K: [batch_size, n_heads, len_k, d_k]
         if attn_mask is not None:
             attn_mask = attn_mask.unsqueeze(1).repeat(1, self.n_heads, 1,
                                                   1)  # attn_mask : [batch_size, n_heads, seq_len, seq_len]
@@ -95,11 +95,10 @@ class MultiHeadAttention(nn.Module):
         input_V: [batch_size, len_v(=len_k), d_model]
         attn_mask: [batch_size, seq_len, seq_len]
         '''
-        residual, batch_size = input_Q, input_Q.size(0)
-        # (B, S, D) -proj-> (B, S, D_new) -split-> (B, S, H, W) -trans-> (B, H, S, W)
-        Q = self.W_Q(input_Q).view(batch_size, self.num_of_d, -1, self.n_heads, self.d_k).transpose(2, 3)  # Q: [batch_size, n_heads, len_q, d_k]
-        K = self.W_K(input_K).view(batch_size, self.num_of_d, -1, self.n_heads, self.d_k).transpose(2, 3)  # K: [batch_size, n_heads, len_k, d_k]
-        V = self.W_V(input_V).view(batch_size, self.num_of_d, -1, self.n_heads, self.d_v).transpose(2, 3)  # V: [batch_size, n_heads, len_v(=len_k), d_v]
+        residual, batch_size = input_Q, input_Q.size(0)  
+        Q = self.W_Q(input_Q)
+        K = self.W_K(input_K)
+        V = self.W_V(input_V)
         if attn_mask is not None:
             attn_mask = attn_mask.unsqueeze(1).repeat(1, self.n_heads, 1,
                                                   1)  # attn_mask : [batch_size, n_heads, seq_len, seq_len]
@@ -109,6 +108,8 @@ class MultiHeadAttention(nn.Module):
         context = context.transpose(2, 3).reshape(batch_size, self.num_of_d, -1,
                                                   self.n_heads * self.d_v)  # context: [batch_size, len_q, n_heads * d_v]
         output = self.fc(context)  # [batch_size, len_q, d_model]
+        print("out", output.shape)
+        print("residual", residual.shape)
         return nn.LayerNorm(self.d_model).to(self.DEVICE)(output + residual), res_attn
 
 
@@ -156,7 +157,7 @@ class cheb_conv_withSAt(nn.Module):
                 T_k = self.cheb_polynomials[k]  # (N,N)
                 mask = self.mask[k]
 
-                myspatial_attention = spatial_attention[:, k, :, :] + adj_pa.mul(mask)
+                myspatial_attention = spatial_attention + adj_pa.mul(mask)
                 myspatial_attention = F.softmax(myspatial_attention, dim=1)
 
                 T_k_with_at = T_k.mul(myspatial_attention)   # (N,N)*(N,N) = (N,N) 多行和为1, 按着列进行归一化
@@ -265,9 +266,11 @@ class GTU(nn.Module):
 class DSTAGNN_block(nn.Module):
 
     def __init__(self, DEVICE, num_of_d, in_channels, K, nb_chev_filter, nb_time_filter, time_strides,
-                 cheb_polynomials, adj_pa, adj_TMD, num_of_vertices, num_of_timesteps, d_model, d_k, d_v, n_heads, embed=False):
+                 cheb_polynomials, adj_pa, adj_TMD, num_of_vertices, num_of_timesteps, d_model, 
+                 d_k, d_v, n_heads, embed=False):
         super(DSTAGNN_block, self).__init__()
         self.embed = embed
+
         self.sigmoid = nn.Sigmoid()
         self.tanh = nn.Tanh()
         self.relu = nn.ReLU(inplace=True)
@@ -287,8 +290,6 @@ class DSTAGNN_block(nn.Module):
         self.gtu3 = GTU(nb_time_filter, time_strides, 3)
         self.gtu5 = GTU(nb_time_filter, time_strides, 5)
         self.gtu7 = GTU(nb_time_filter, time_strides, 7)
-        self.pooling = torch.nn.MaxPool2d(kernel_size=(1, 2), stride=None, padding=0,
-                                          return_indices=False, ceil_mode=False)
 
         self.residual_conv = nn.Conv2d(in_channels, nb_time_filter, kernel_size=(1, 1), stride=(1, time_strides))
 
@@ -298,6 +299,8 @@ class DSTAGNN_block(nn.Module):
             nn.Dropout(0.05),
         )
         self.ln = nn.LayerNorm(nb_time_filter)
+        if self.embed:
+            self.res_att_scaler = nn.Conv2d(in_channels, nb_time_filter, kernel_size=(1, 1))
 
     def forward(self, x, res_att):
         '''
@@ -306,18 +309,13 @@ class DSTAGNN_block(nn.Module):
         :return: (Batch_size, N, nb_time_filter, T)
         '''
         batch_size, num_of_vertices, num_of_features, num_of_timesteps = x.shape  # B,N,F,T
-
-        # TAT
+        print("Input: ", x.shape)
         if self.embed:
             TEmx = self.EmbedT(x, batch_size)  # B,F,T,N
         else:
             TEmx = x.permute(0, 2, 3, 1)
         TATout, re_At = self.TAt(TEmx, TEmx, TEmx, None, res_att)  # B,F,T,N; B,F,Ht,T,T
-        if self.embed:
-            re_At = 0
-
-        x_TAt = self.pre_conv(TATout.permute(0, 2, 3, 1))[:, :, :, -1].permute(0, 2, 1)  # B,N,d_model
-
+        x_TAt = self.pre_conv(TATout.permute(0, 2, 3, 1)).squeeze().permute(0, 2, 1)  # B,N,d_model
         # SAt
         SEmx_TAt = self.EmbedS(x_TAt, batch_size)  # B,N,d_model
         SEmx_TAt = self.dropout(SEmx_TAt)   # B,N,d_model
@@ -346,7 +344,9 @@ class DSTAGNN_block(nn.Module):
         else:
             x_residual = x.permute(0, 2, 1, 3)
         x_residual = self.ln(F.relu(x_residual + time_conv_output).permute(0, 3, 2, 1)).permute(0, 2, 3, 1)
-
+        
+        if self.embed:
+            re_At = self.res_att_scaler(re_At)
         return x_residual, re_At
 
 
@@ -410,6 +410,7 @@ def make_model(DEVICE, num_of_d, nb_block, in_channels, K,
                nb_chev_filter, nb_time_filter, time_strides, adj_mx, adj_pa,
                adj_TMD, num_for_predict, len_input, num_of_vertices, d_model, d_k, d_v, n_heads):
     '''
+
     :param DEVICE:
     :param nb_block:
     :param in_channels:

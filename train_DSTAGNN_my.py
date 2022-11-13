@@ -237,17 +237,7 @@ if __name__ == "__main__":
 
     train_main()
     # predict_main(18, test_loader, test_target_tensor, _mean, _std, 'test')
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    # model test
+    # test_data = torch.ones(size=(4, 307, num_features, 12)).to(DEVICE)
+    # print("data shape", test_data.shape)
+    # print(net(test_data))
