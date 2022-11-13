@@ -108,8 +108,6 @@ class MultiHeadAttention(nn.Module):
         context = context.transpose(2, 3).reshape(batch_size, self.num_of_d, -1,
                                                   self.n_heads * self.d_v)  # context: [batch_size, len_q, n_heads * d_v]
         output = self.fc(context)  # [batch_size, len_q, d_model]
-        print("out", output.shape)
-        print("residual", residual.shape)
         return nn.LayerNorm(self.d_model).to(self.DEVICE)(output + residual), res_attn
 
 
@@ -309,7 +307,6 @@ class DSTAGNN_block(nn.Module):
         :return: (Batch_size, N, nb_time_filter, T)
         '''
         batch_size, num_of_vertices, num_of_features, num_of_timesteps = x.shape  # B,N,F,T
-        print("Input: ", x.shape)
         if self.embed:
             TEmx = self.EmbedT(x, batch_size)  # B,F,T,N
         else:
